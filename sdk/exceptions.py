@@ -3,7 +3,7 @@ class SDKError(Exception):
 
 
 class AuthenticationError(SDKError):
-  """Raised when login or key‑swap fails."""
+  """Raised when login or key-swap fails."""
 
 
 class RefreshError(SDKError):
@@ -12,3 +12,6 @@ class RefreshError(SDKError):
 
 class RegistrationError(SDKError):
   """Raised when model registration fails."""
+
+class APIError(SDKError):
+  """Raised when API error occurs."""

@@ -1,28 +1,35 @@
-from covalence import Covalence
-
-# 1) one‑line instantiation
-covalence = Covalence(
-  email="alice@acme.com",
-  password="hunter2",
-)
-
-# 2) register their model alias
-covalence.register_model(name="my-gpt", model="gpt-4o", provider="openai")
-
-# 3) now set up your client exactly as usual:
+# example_usage.py
+from sdk.client import Covalence
 import openai
 
-client = openai.OpenAI(
-  api_key=covalence.get_token(),
-  base_url="https://covalence.run/v1"  # Point to our proxy
-)
+def main():
+  # 1) Instantiate and authenticate in one line
+  cov = Covalence(
+    email="alice@acme.com",
+    password="hunter2",
+  )
 
-# Make a request using the custom model name
-response = client.chat.completions.create(
-  model="my-gpt4",  # Use the custom name we registered
-  messages=[{"role": "user", "content": "Hello, how are you?"}],
-)
+  # 2) Register your alias
+  cov.register_model(
+    name="my-gpt",
+    model="gpt-4o",
+    provider="openai",
+    api_key="sk-1234…"
+  )
 
-print("\nOpenAI Response:")
-print(response.choices[0].message.content)
+  # 3) Pump the token into your existing OpenAI client
+  client = openai.OpenAI(
+    api_key=cov.token(),
+    base_url=cov.url(),
+  )
 
+  # 4) Make a chat call
+  resp = client.chat.completions.create(
+    model="my-gpt",
+    messages=[{"role":"user","content":"Hello, how are you?"}],
+  )
+  print("AI says:", resp.choices[0].message.content)
+
+
+if __name__ == "__main__":
+  main()

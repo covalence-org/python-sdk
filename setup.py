@@ -17,7 +17,13 @@ setup(
     "PyJWT>=2.0.0",
     "pydantic>=1.10.2",
     "urllib3>=1.26.0",
+    "click>=8.0.0",
   ],
+  entry_points={
+    "console_scripts": [
+      "covalence=covalence.cli:cli",
+    ],
+  },
   classifiers=[
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
