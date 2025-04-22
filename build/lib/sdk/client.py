@@ -9,7 +9,7 @@ from requests.adapters import HTTPAdapter
 
 from .utils import get_provider_url
 from .models import (
-  LoginReq, LoginResp,
+  AuthReq, AuthResp,
   SwapReq, SwapResp,
   RefreshReq, RefreshResp,
   RegisterModelReq
@@ -20,11 +20,7 @@ from .exceptions import (
   RegistrationError
 )
 
-# Proxy configuration
-PROXY_BASE = "https://api.covalence.run"
-PROXY_API_URL = f"{PROXY_BASE}/v1"
-# Default timeout for all HTTP calls (seconds)
-HTTP_TIMEOUT = float(os.getenv("COVALENCE_HTTP_TIMEOUT", "10"))
+DEFAULT_PROXY_BASE = "https://api.covalence.run"
 
 class Covalence:
   def __init__(self, email: str | None = None, password: str | None = None):
@@ -56,22 +52,53 @@ class Covalence:
     # Prevent redirects to untrusted URLs
     self._session.max_redirects = 3
 
+    # Proxy configuration
+    self.proxy_base = os.getenv("COVALENCE_PROXY_BASE", DEFAULT_PROXY_BASE)
+    self.proxy_api_url = f"{self.proxy_base}/v1"
+    self.logger.info(f"Using proxy: {self.proxy_api_url}")
+    self.http_timeout = float(os.getenv("COVALENCE_HTTP_TIMEOUT", "10"))
+
     # Authenticate via proxy (wraps Supabase)
     self._login()
 
     # Lock for thread-safe token refresh
     self._lock = threading.Lock()
 
+  @classmethod
+  def sign_up(cls, email: str, password: str) -> "Covalence":
+    """
+    Create a new Covalence account and return an instance of the class.
+    """
+    # Proxy configuration
+    proxy_base = os.getenv("COVALENCE_PROXY_BASE", DEFAULT_PROXY_BASE)
+    http_timeout = float(os.getenv("COVALENCE_HTTP_TIMEOUT", "10"))
+
+    payload = AuthReq(email=email, password=password).model_dump(mode="json")
+    try:
+      resp = requests.post(
+        f"{proxy_base}/auth/signup",
+        json=payload,
+        timeout=http_timeout,
+        allow_redirects=False
+      )
+    except requests.RequestException as e:
+      raise AuthenticationError("Network error during signup") from e
+
+    if resp.status_code != 200:
+      raise AuthenticationError(f"Signup failed ({resp.status_code})")
+
+    return cls(email=email, password=password)
+
   def _login(self):
     """
     Authenticate via proxy endpoint (wraps Supabase). Store session tokens.
     """
-    payload = LoginReq(email=self.email, password=self.password).model_dump(mode="json")
+    payload = AuthReq(email=self.email, password=self.password).model_dump(mode="json")
     try:
       resp = self._session.post(
-        f"{PROXY_BASE}/auth/login",
+        f"{self.proxy_base}/auth/login",
         json=payload,
-        timeout=HTTP_TIMEOUT,
+        timeout=self.http_timeout,
         allow_redirects=False
       )
     except requests.RequestException as e:
@@ -81,13 +108,13 @@ class Covalence:
     if resp.status_code != 200:
       self.logger.warning("Login failed", extra={"status": resp.status_code})
       raise AuthenticationError(f"Login failed ({resp.status_code})")
-
-    session = LoginResp(**resp.json())
-    self._session_jwt = session.access_token
-    self._session_refresh = session.refresh_token
-    self._session_expiry = session.expires_at
+    self._session = AuthResp(**resp.json())
+    self.logger.info("Login successful: %s", self._session.model_dump(mode="json"))
+    self._session_jwt = self._session.access_token
+    self._session_refresh = self._session.refresh_token
+    self._session_expiry = self._session.expires_at
     # Do not log token details
-    self.logger.debug("Logged in: session acquired; user_id=%s", session.user.id)
+    # self.logger.debug("Logged in: session acquired; user_id=%s", session.user.id)
 
   def register_model(self, name: str, model: str, provider: str, api_key: str | None = None, custom_api_url: str | None = None) -> dict:
     """
@@ -111,10 +138,10 @@ class Covalence:
     headers = {"Authorization": f"Bearer {self._access_token}"}
     try:
       resp = self._session.post(
-        f"{PROXY_BASE}/model/register",
+        f"{self.proxy_base}/model/register",
         headers=headers,
         json=payload,
-        timeout=HTTP_TIMEOUT,
+        timeout=self.http_timeout,
         allow_redirects=False
       )
     except requests.RequestException as e:
@@ -135,9 +162,9 @@ class Covalence:
     token = self.token()
     headers = {"Authorization": f"Bearer {token}"}
     resp = self._session.get(
-      f"{PROXY_API_URL}/user/me",
+      f"{self.proxy_api_url}/user/me",
       headers=headers,
-      timeout=HTTP_TIMEOUT,
+      timeout=self.http_timeout,
       allow_redirects=False
     )
     try:
@@ -155,10 +182,10 @@ class Covalence:
     headers = {"Authorization": f"Bearer {self._session_jwt}"}
     try:
       resp = self._session.post(
-        f"{PROXY_BASE}/auth/token",
+        f"{self.proxy_base}/auth/token",
         headers=headers,
         json=payload,
-        timeout=HTTP_TIMEOUT,
+        timeout=self.http_timeout,
         allow_redirects=False
       )
     except requests.RequestException as e:
@@ -186,9 +213,9 @@ class Covalence:
       try:
         payload = RefreshReq(refresh_token=self._refresh_token).model_dump(mode="json")
         resp = self._session.post(
-          f"{PROXY_BASE}/auth/refresh",
+          f"{self.proxy_base}/auth/refresh",
           json=payload,
-          timeout=HTTP_TIMEOUT,
+          timeout=self.http_timeout,
           allow_redirects=False
         )
       except requests.RequestException as e:
@@ -216,4 +243,4 @@ class Covalence:
     """
     Return the proxy API base URL (/v1).
     """
-    return PROXY_API_URL
+    return self.proxy_api_url

@@ -16,6 +16,7 @@ setup(
     "requests>=2.25.1",
     "PyJWT>=2.0.0",
     "pydantic>=1.10.2",
+    "pydantic[email]",
     "urllib3>=1.26.0",
     "click>=8.0.0",
   ],
